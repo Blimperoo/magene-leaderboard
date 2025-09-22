@@ -198,7 +198,10 @@ async function ensureConnected() {
   if (!('bluetooth' in navigator)) { status('❌ Web Bluetooth not supported in this browser.'); return; }
   try {
     status('Requesting device…');
-    device = await navigator.bluetooth.requestDevice({ filters: [{ services: [UUID_CSC_SERVICE] }] });
+    device = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: [UUID_CSC_SERVICE]
+    });
     device.addEventListener('gattserverdisconnected', onDisconnected);
 
     status('Connecting…');
@@ -213,8 +216,9 @@ async function ensureConnected() {
     disconnectBtn.disabled = false;
     startBtn.disabled = false;
     status('✅ Connected. Ready to start.');
-  } catch (e) { status('❌ ' + e); }
+  } catch (e) { status('❌ ' + e); console.error(e); }
 }
+
 async function disconnectNow() {
   try {
     if (charMeas) { charMeas.removeEventListener('characteristicvaluechanged', onCsc); try{ await charMeas.stopNotifications(); }catch{} }
