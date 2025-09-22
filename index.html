@@ -442,8 +442,10 @@ disconnectBtn.addEventListener('click', disconnectNow);
 landingStartBtn.addEventListener('click', handleStartFlow);
 backBtn.addEventListener('click', () => {
   if (testRunning) stopTestEarly('Stopped (back)');
+  overlay.classList.add('hidden');   // <-- add this
   gotoScreen('landing');
 });
+
 stopBtn.addEventListener('click', () => stopTestEarly('Stopped by user'));
 dlRunBtn.addEventListener('click', downloadRunCsv);
 dlSummaryBtn.addEventListener('click', downloadLeaderboardCsv);
@@ -557,26 +559,46 @@ function gotoScreen(which){
 
 async function handleStartFlow(){
   if (!connected) { await ensureConnected(); if (!connected) return; }
-  // go to run screen + cinematic countdown
+  // Switch to Run screen first, then yield a frame so the DOM paints
   gotoScreen('run');
-  await doCountdownOverlay();
+  await nextFrame();             // <-- important: let the Run screen render
+  await doCountdownOverlay();    // show 3-2-1 only on the Run screen
   startTest();
 }
 
+
 // ===== Countdown overlay =====
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+let countdownBusy = false;
+
 async function doCountdownOverlay(){
+  if (countdownBusy) return;           // prevent double starts
+  countdownBusy = true;
+
   overlay.classList.remove('hidden');
+
+  // Restart the CSS animation every number so it never “sticks”
+  const restartAnim = () => {
+    overlayText.style.animation = 'none';
+    void overlayText.offsetWidth;      // force reflow
+    overlayText.style.animation = '';  // restore
+  };
+
   for (const n of [3,2,1]){
     overlayText.className = 'countNum';
     overlayText.textContent = n;
+    restartAnim();
     await sleep(800);
   }
   overlayText.className = 'countNum countGo';
   overlayText.textContent = 'GO!';
+  restartAnim();
   await sleep(500);
+
   overlay.classList.add('hidden');
+  countdownBusy = false;
 }
+
 
 // ===== Test control =====
 async function startTest() {
@@ -613,8 +635,10 @@ function tick() {
 function stopTestEarly(reason) {
   testRunning = false; if (rafId) cancelAnimationFrame(rafId);
   stopBtn.disabled = true;
+  overlay.classList.add('hidden');   // <-- add this
   status(reason || 'Stopped.');
 }
+
 async function finishTest() {
   if (!testRunning) return;
   testRunning = false; if (rafId) cancelAnimationFrame(rafId);
@@ -794,6 +818,11 @@ function setConnState(state, text){
   connText.textContent = text || (state==='online'?'Connected' : state==='connecting'?'Connecting…':'Not connected');
 }
 
+// 1) add this helper near your other helpers
+const nextFrame = () =>
+  new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
+
+  
 // ===== Gauge update =====
 function updateGauge(kmh){
   // auto-extend gauge if needed
