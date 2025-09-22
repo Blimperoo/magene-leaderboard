@@ -194,13 +194,19 @@ dlSummaryBtn.addEventListener('click', downloadSummaryCsv);
 
 /* ===== BLE lifecycle ===== */
 async function ensureConnected() {
-  if (connected && charMeas && server?.connected) { status('Already connected.'); return; }
-  if (!('bluetooth' in navigator)) { status('❌ Web Bluetooth not supported in this browser.'); return; }
+  if (connected && charMeas && server?.connected) { 
+    status('Already connected.'); 
+    return; 
+  }
+  if (!('bluetooth' in navigator)) { 
+    status('❌ Web Bluetooth not supported in this browser.'); 
+    return; 
+  }
   try {
     status('Requesting device…');
     device = await navigator.bluetooth.requestDevice({
-      acceptAllDevices: true,
-      optionalServices: [UUID_CSC_SERVICE]
+      acceptAllDevices: true,  // 🔑 allow all devices
+      optionalServices: [UUID_CSC_SERVICE]  // 🔑 so we can use CSC later
     });
     device.addEventListener('gattserverdisconnected', onDisconnected);
 
@@ -211,12 +217,17 @@ async function ensureConnected() {
     charMeas = await service.getCharacteristic(UUID_CSC_MEAS);
     await charMeas.startNotifications();
     charMeas.addEventListener('characteristicvaluechanged', onCsc);
+
     connected = true;
     connectBtn.disabled = true;
     disconnectBtn.disabled = false;
     startBtn.disabled = false;
     status('✅ Connected. Ready to start.');
-  } catch (e) { status('❌ ' + e); console.error(e); }
+    console.log("Picked device:", device.name);
+  } catch (e) {
+    status('❌ ' + e);
+    console.error(e);
+  }
 }
 
 async function disconnectNow() {
