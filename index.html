@@ -115,6 +115,23 @@
       .grid{grid-template-columns:1fr}
       h1{font-size:30px}
     }
+    /* Stable Chart.js sizing */
+    .chart-wrap{
+      width:100%;
+      height:340px;                 /* control height here */
+    }
+    canvas{
+      width:100% !important;
+      height:100% !important;       /* canvas fills the wrapper */
+    }
+
+    /* Optional: shorter chart on small screens */
+    @media (max-width:720px){
+      .chart-wrap{ height:280px; }
+    }
+    @media (max-width:480px){
+      .chart-wrap{ height:240px; }
+    }
 
   </style>
 </head>
@@ -163,9 +180,11 @@
       <div class="metric"><span>Avg speed (30s)</span><b id="avgSpeed">–</b></div>
       <div class="metric"><span>Max speed (30s)</span><b id="maxSpeed">–</b></div>
     </div>
-    <div style="margin-top:16px">
-      <canvas id="spdChart"></canvas>
-    </div>
+  <div id="chartWrap" class="chart-wrap" style="margin-top:16px">
+    <canvas id="spdChart"></canvas>
+  </div>
+
+
     <div class="right" style="margin-top:12px">
       <button id="downloadRunBtn">Download run CSV</button>
     </div>
@@ -302,6 +321,7 @@ const chart = new Chart(ctx, {
   options: {
     animation: false,
     responsive: true,
+    maintainAspectRatio: false,   // ← add this line
     scales: {
       x: { title: { display: true, text: 'Time (s)' } },
       y: { title: { display: true, text: 'km/h' }, suggestedMin: 0 }
@@ -309,6 +329,7 @@ const chart = new Chart(ctx, {
     plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } }
   }
 });
+
 function addChartPoint(t, kmh) {
   const w = Number(smoothSelect.value);
   if (w > 1) {
