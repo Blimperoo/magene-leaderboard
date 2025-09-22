@@ -372,9 +372,26 @@ function saveBlob(text, filename, type) {
 }
 
 //???
-function status(msg){ statusEl.textContent = msg; }
-function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m => ({'&':'&lt;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]); }
-function csvSafe(s){ return `"${String(s).replace(/"/g,'""')}"`; }
+function status(msg) { 
+  statusEl.textContent = msg; 
+}
+
+function escapeHtml(s) { 
+  return String(s).replace(/[&<>"']/g, m => (
+    {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;'
+    }[m]
+  ));  
+}
+
+function csvSafe(s) { 
+  return `"${String(s).replace(/"/g,'""')}"`; 
+}
+
 </script>
 </body>
 </html>
