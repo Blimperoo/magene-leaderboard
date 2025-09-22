@@ -193,6 +193,7 @@ dlRunBtn.addEventListener('click', downloadRunCsv);
 dlSummaryBtn.addEventListener('click', downloadSummaryCsv);
 
 /* ===== BLE lifecycle ===== */
+/* ===== BLE lifecycle ===== */
 async function ensureConnected() {
   if (connected && charMeas && server?.connected) { 
     status('Already connected.'); 
@@ -204,8 +205,9 @@ async function ensureConnected() {
   }
   try {
     status('Requesting device…');
+    // 🔑 This limits the chooser to devices that advertise 0x1816 (CSC)
     device = await navigator.bluetooth.requestDevice({
-      optionalServices: [UUID_CSC_SERVICE]  // 🔑 so we can use CSC later
+      filters: [{ services: [UUID_CSC_SERVICE] }]
     });
     device.addEventListener('gattserverdisconnected', onDisconnected);
 
@@ -228,6 +230,7 @@ async function ensureConnected() {
     console.error(e);
   }
 }
+
 
 async function disconnectNow() {
   try {
