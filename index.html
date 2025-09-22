@@ -205,7 +205,6 @@ async function ensureConnected() {
   try {
     status('Requesting device…');
     device = await navigator.bluetooth.requestDevice({
-      acceptAllDevices: true,  // 🔑 allow all devices
       optionalServices: [UUID_CSC_SERVICE]  // 🔑 so we can use CSC later
     });
     device.addEventListener('gattserverdisconnected', onDisconnected);
