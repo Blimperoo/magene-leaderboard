@@ -21,6 +21,9 @@
       --muted:#6b7280;
       --line:#e5e7eb;
       --card:#ffffff;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --bad: #ef4444;
     }
 
     *{box-sizing:border-box}
@@ -42,45 +45,41 @@
     }
     button.primary:disabled{opacity:.5; cursor:not-allowed}
     button.secondary{background:#fff; color:var(--db-deep); border-color:var(--db-deep)}
+    button.ghost{background:transparent;border:1px dashed var(--line);color:var(--muted)}
     button:focus{outline:3px solid color-mix(in oklab, var(--db-deep) 50%, white); outline-offset:1px}
 
     .card{
       width:var(--w); background:var(--card); border:1px solid var(--line);
       border-radius:16px; box-shadow:0 6px 16px rgba(0,0,0,.05); padding:18px; margin:10px 0
     }
-    .toolbar{display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:center;margin-bottom:16px}
-    label{font-size:14px;color:#374151}
-    .grow{flex:1}
-    .right{display:flex;gap:10px;flex-wrap:wrap}
 
-    #countdown{font-size:56px;margin:6px 0}
-    #live,#result,#status{font-size:18px;margin:4px 0}
-
-    /* DB “expanding box” flavour: slim blue keyline on section titles */
-    .section-title{
-      display:flex; align-items:center; gap:10px; margin:0 0 8px
+    /* ===== Landing header row ===== */
+    .header-row{
+      display:grid;
+      grid-template-columns: 1fr auto auto auto;
+      gap:12px; align-items:end;
     }
-    .section-title::before{
-      content:""; width:8px; height:24px; background:var(--db-deep); border-radius:3px
+    .field label{font-size:12px;color:var(--muted);display:block;margin-bottom:4px}
+    .badge{
+      display:inline-flex; align-items:center; gap:8px;
+      padding:8px 10px; border-radius:999px; border:1px solid var(--line); background:#fff; white-space:nowrap;
     }
+    .dot{width:10px;height:10px;border-radius:999px;background:#ccc;box-shadow:0 0 0 2px rgba(0,0,0,0.03) inset}
+    .online .dot{background:var(--ok)}
+    .offline .dot{background:#ccc}
+    .connecting .dot{background:var(--warn)}
 
-    /* Metrics */
-    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:8px}
-    .metric{background:#f8fafc;border:1px solid var(--line);border-radius:12px;padding:12px;text-align:center}
-    .metric span{color:var(--muted);font-size:13px}
-    .metric b{display:block;font-size:22px;margin-top:4px}
+    /* ===== Section title ===== */
+    .section-title{display:flex; align-items:center; gap:10px; margin:0 0 8px}
+    .section-title::before{content:""; width:8px; height:24px; background:var(--db-deep); border-radius:3px}
 
-    /* Tabs */
+    /* ===== Tabs, tables, podium ===== */
     .tabs{display:flex;gap:8px;margin-bottom:10px}
     .tab{border-radius:10px;border:1px solid var(--line);background:#fff;padding:8px 12px}
     .tab.active{background:var(--db-deep);color:#fff;border-color:var(--db-deep)}
     .hidden{display:none}
+    .grow{flex:1}
 
-    /* Current placement pill */
-    .pill{display:inline-flex;align-items:center;gap:8px;background:#eef2ff;color:var(--db-deep);
-      padding:6px 10px;border-radius:999px;font-weight:600}
-
-    /* Podium (top 3) */
     .podium{display:grid;grid-template-columns:1fr 1fr 1fr; gap:10px; margin:8px 0 4px}
     .podium .slot{
       background:linear-gradient(180deg, #fff, #f3f6ff);
@@ -89,107 +88,108 @@
     .podium .rank{font-weight:800; color:var(--db-deep); font-size:18px}
     .podium .name{font-weight:600; margin-top:4px}
     .podium .km{margin-top:6px; font-size:14px; color:var(--muted)}
-    .podium .slot:first-child{transform:translateY(3px)}   /* #1 a touch higher */
-    .podium .slot:nth-child(2){transform:translateY(10px)}
-    .podium .slot:nth-child(3){transform:translateY(10px)}
+    .podium .slot:first-child{transform:translateY(3px)}
+    .podium .slot:nth-child(2), .podium .slot:nth-child(3){transform:translateY(10px)}
 
-    /* Leaderboard table */
     table{width:100%;border-collapse:collapse;margin-top:8px}
     th,td{border-bottom:1px solid var(--line);padding:10px;text-align:left}
     th{background:var(--db-deep);color:#fff; font-weight:600}
-    tr.me{position:relative}
     tr.me td{background:color-mix(in oklab, var(--db-bright) 12%, white)}
     tr.me td:first-child{border-left:4px solid var(--db-bright)}
 
-    /* Mobile responsiveness */
+    /* ===== Run screen ===== */
+    .run-top{display:grid; grid-template-columns: 280px 1fr; gap:16px}
+    .gauge-card, .chart-card{background:#f8fafc;border:1px solid var(--line);border-radius:12px;padding:12px}
+    .gauge-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center}
+    .gauge-number{font-size:36px;font-weight:800;margin-top:-10px}
+    .gauge-sub{font-size:12px;color:var(--muted);margin-top:-2px}
+    .gauge-max{font-size:11px;color:var(--muted);margin-top:6px}
+
+    .chart-wrap{width:100%;height:340px}
+    canvas{width:100% !important; height:100% !important}
+
+    .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:12px}
+    .metric{background:#f8fafc;border:1px solid var(--line);border-radius:12px;padding:12px;text-align:center}
+    .metric span{color:var(--muted);font-size:13px}
+    .metric b{display:block;font-size:22px;margin-top:4px}
+
+    .timebar{height:10px;background:#eef2ff;border-radius:999px;overflow:hidden;border:1px solid var(--line);margin:8px 0 10px}
+    .timefill{height:100%;width:0%;background:linear-gradient(90deg,var(--db-bright),var(--db-deep)); transition:width .1s linear}
+
+    .run-controls{display:flex;gap:10px;justify-content:flex-end;margin-top:8px}
+
+    /* End-of-run gentle pulse */
+    .ending .timefill{animation:pulse 1s ease-in-out infinite}
+    @keyframes pulse { 0%{filter:brightness(100%)} 50%{filter:brightness(130%)} 100%{filter:brightness(100%)} }
+
+    /* ===== 3-2-1 overlay ===== */
+    .overlay{
+      position:fixed; inset:0; background:rgba(0,0,0,.55);
+      display:flex; align-items:center; justify-content:center; z-index:9999;
+      backdrop-filter: blur(2px);
+    }
+    .countNum{
+      font-size:120px; color:white; font-weight:900; letter-spacing:2px;
+      animation:pop .7s ease-out both;
+      text-shadow: 0 6px 22px rgba(0,0,0,.35);
+    }
+    .countGo{font-size:100px}
+    @keyframes pop { 0%{transform:scale(.6);opacity:0} 70%{transform:scale(1.06);opacity:1} 100%{transform:scale(1);opacity:1} }
+
+    /* Mobile tweaks */
+    @media (max-width: 980px){
+      .run-top{grid-template-columns:1fr}
+    }
     @media (max-width: 720px){
-      .grid{grid-template-columns:1fr 1fr}
-      .podium{grid-template-columns:1fr; gap:8px}
-      .toolbar{justify-content:flex-start}
-      table{display:block; overflow:auto; -webkit-overflow-scrolling:touch}
-      th,td{white-space:nowrap}
-      #countdown{font-size:40px}
-    }
-
-    @media (max-width:480px){
-      .grid{grid-template-columns:1fr}
-      h1{font-size:30px}
-    }
-    /* Stable Chart.js sizing */
-    .chart-wrap{
-      width:100%;
-      height:340px;                 /* control height here */
-    }
-    canvas{
-      width:100% !important;
-      height:100% !important;       /* canvas fills the wrapper */
-    }
-
-    /* Optional: shorter chart on small screens */
-    @media (max-width:720px){
-      .chart-wrap{ height:280px; }
+      .metrics{grid-template-columns:1fr 1fr}
+      .chart-wrap{height:280px}
+      h1{font-size:32px}
     }
     @media (max-width:480px){
-      .chart-wrap{ height:240px; }
+      .metrics{grid-template-columns:1fr}
+      .chart-wrap{height:240px}
+      h1{font-size:28px}
     }
-
   </style>
 </head>
 <body>
   <h1>30s Distance Test</h1>
   <div class="sub">Connect a Cycling Speed &amp; Cadence sensor (wheel data) to measure distance and show live speed.</div>
 
-  <div class="card">
-    <div class="toolbar">
-      <div>
-        <label>Name</label><br/>
+  <!-- ============ LANDING ============ -->
+  <div id="landingScreen" class="card">
+    <div class="header-row">
+      <div class="field">
+        <label>Name</label>
         <input id="nameInput" placeholder="Rider name" />
       </div>
-      <div>
-        <label>Tyre circumference (m)</label><br/>
+
+      <div class="field">
+        <label>Tyre circumference (m)</label>
         <input id="circInput" type="number" step="0.001" min="0.5" max="5" />
       </div>
-      <div>
-        <label>Smoothing</label><br/>
-        <select id="smoothSelect">
-          <option value="1">None</option>
-          <option value="3">3-pt</option>
-          <option value="5" selected>5-pt</option>
-          <option value="7">7-pt</option>
-        </select>
+
+      <div class="field">
+        <label>Status</label>
+        <div id="connBadge" class="badge offline">
+          <span class="dot"></span><span id="connText">Not connected</span>
+        </div>
       </div>
-      <span class="grow"></span>
-      <div class="right">
-        <button id="connectBtn">Connect</button>
-        <button id="startBtn" disabled>Start 30s</button>
-        <button id="stopBtn" disabled>Stop</button>
-        <button id="disconnectBtn" disabled>Disconnect</button>
+
+      <div class="field" style="display:flex; gap:8px; justify-content:flex-end">
+        <button id="connectBtn" class="secondary">Connect sensor</button>
+        <button id="disconnectBtn" class="ghost" disabled>Disconnect</button>
       </div>
     </div>
-    <div id="status" class="fine"></div>
-    <div class="fine" style="margin-top:6px">
-      <span id="placementPill" class="pill hidden">You’re currently <span id="placementRank">#–</span></span>
+
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px">
+      <button id="landingStartBtn" class="primary" disabled>Start 30s test</button>
     </div>
+
+    <div id="status" style="margin-top:10px;color:#111"></div>
   </div>
 
-  <div class="card">
-    <div id="countdown"></div>
-    <div class="grid">
-      <div class="metric"><span>Live speed</span><b id="liveSpeed">0.0 km/h</b></div>
-      <div class="metric"><span>Final distance</span><b id="finalDist">–</b></div>
-      <div class="metric"><span>Avg speed (30s)</span><b id="avgSpeed">–</b></div>
-      <div class="metric"><span>Max speed (30s)</span><b id="maxSpeed">–</b></div>
-    </div>
-  <div id="chartWrap" class="chart-wrap" style="margin-top:16px">
-    <canvas id="spdChart"></canvas>
-  </div>
-
-
-    <div class="right" style="margin-top:12px">
-      <button id="downloadRunBtn">Download run CSV</button>
-    </div>
-  </div>
-
+  <!-- Leaderboard / My stats -->
   <div class="card" style="padding-top:10px">
     <div class="tabs">
       <button id="tabLeaderboard" class="tab active">Leaderboard</button>
@@ -198,7 +198,6 @@
       <button id="downloadSummaryBtn">Download leaderboard CSV</button>
     </div>
 
-    <!-- Leaderboard view -->
     <div id="viewLeaderboard">
       <h3 class="section-title">Leaderboard</h3>
       <div id="podium" class="podium" aria-live="polite"></div>
@@ -210,15 +209,14 @@
       </table>
     </div>
 
-    <!-- My stats view -->
     <div id="viewMyStats" class="hidden">
-      <div class="grid">
+      <div class="metrics">
         <div class="metric"><span>Your best distance</span><b id="meBestKm">–</b></div>
         <div class="metric"><span>Your best avg</span><b id="meBestAvg">–</b></div>
         <div class="metric"><span>Your best max</span><b id="meBestMax">–</b></div>
         <div class="metric"><span>Your place</span><b id="mePlace">–</b></div>
       </div>
-      <div class="right" style="margin-top:12px">
+      <div style="display:flex;justify-content:flex-end;margin-top:12px">
         <button id="downloadMineBtn">Download my runs CSV</button>
       </div>
       <table style="margin-top:8px">
@@ -227,6 +225,58 @@
       </table>
     </div>
   </div>
+
+  <!-- ============ RUN SCREEN ============ -->
+  <div id="runScreen" class="card hidden">
+    <div class="timebar"><div id="timeFill" class="timefill"></div></div>
+
+    <div class="run-top">
+      <!-- Gauge -->
+      <div class="gauge-card">
+        <div class="gauge-wrap">
+          <!-- semicircle 180° gauge -->
+          <svg id="gaugeSvg" viewBox="0 0 200 120" width="100%" height="120">
+            <!-- background arc -->
+            <path d="M10 110 A90 90 0 0 1 190 110" fill="none" stroke="#e5e7eb" stroke-width="18" stroke-linecap="round"/>
+            <!-- progress arc -->
+            <path id="gaugeArc" d="M10 110 A90 90 0 0 1 190 110" fill="none" stroke="url(#grad)" stroke-width="18" stroke-linecap="round"
+                  stroke-dasharray="0 999"/>
+            <defs>
+              <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#00A3E0"/><stop offset="100%" stop-color="#0018A8"/>
+              </linearGradient>
+            </defs>
+          </svg>
+          <div class="gauge-number"><span id="gaugeNum">0.0</span> <span style="font-size:14px">km/h</span></div>
+          <div class="gauge-sub" id="gaugeSub">Live speed</div>
+          <div class="gauge-max">Gauge max: <span id="gaugeMaxLbl">60</span> km/h</div>
+        </div>
+      </div>
+
+      <!-- Chart -->
+      <div class="chart-card">
+        <div class="section-title">Speed</div>
+        <div class="chart-wrap"><canvas id="spdChart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Metrics -->
+    <div class="metrics">
+      <div class="metric"><span>Live speed</span><b id="liveSpeed">0.0 km/h</b></div>
+      <div class="metric"><span>Final distance</span><b id="finalDist">–</b></div>
+      <div class="metric"><span>Avg speed (30s)</span><b id="avgSpeed">–</b></div>
+      <div class="metric"><span>Max speed (30s)</span><b id="maxSpeed">–</b></div>
+    </div>
+
+    <div class="run-controls">
+      <button id="stopBtn" class="secondary" disabled>Stop</button>
+      <button id="backBtn" class="ghost">Back</button>
+      <button id="downloadRunBtn" class="ghost">Download run CSV</button>
+    </div>
+  </div>
+
+  <!-- Cinematic countdown -->
+  <div id="overlay" class="overlay hidden" aria-live="assertive"><div id="overlayText" class="countNum">3</div></div>
 
 <script>
 /* ----------------- Firebase init ----------------- */
@@ -263,19 +313,18 @@ const localRuns = [];
 
 const nameInput = document.getElementById("nameInput");
 const circInput = document.getElementById("circInput");
-const smoothSelect = document.getElementById("smoothSelect");
-
 const connectBtn = document.getElementById("connectBtn");
-const startBtn = document.getElementById("startBtn");
-const stopBtn = document.getElementById("stopBtn");
 const disconnectBtn = document.getElementById("disconnectBtn");
+const landingStartBtn = document.getElementById("landingStartBtn");
+const stopBtn = document.getElementById("stopBtn");
+const backBtn = document.getElementById("backBtn");
 
 const statusEl = document.getElementById("status");
-const countdownEl = document.getElementById("countdown");
 const liveSpeedEl = document.getElementById("liveSpeed");
 const finalDistEl = document.getElementById("finalDist");
 const avgSpeedEl = document.getElementById("avgSpeed");
 const maxSpeedEl = document.getElementById("maxSpeed");
+const timeFill = document.getElementById("timeFill");
 
 const leaderBody = document.getElementById("leaderBody");
 const myRunsBody = document.getElementById("myRunsBody");
@@ -283,8 +332,6 @@ const dlRunBtn = document.getElementById("downloadRunBtn");
 const dlSummaryBtn = document.getElementById("downloadSummaryBtn");
 const dlMineBtn = document.getElementById("downloadMineBtn");
 
-const placementPill = document.getElementById("placementPill");
-const placementRank = document.getElementById("placementRank");
 const meBestKm  = document.getElementById("meBestKm");
 const meBestAvg = document.getElementById("meBestAvg");
 const meBestMax = document.getElementById("meBestMax");
@@ -296,53 +343,88 @@ const tabMyStats = document.getElementById("tabMyStats");
 const viewLeaderboard = document.getElementById("viewLeaderboard");
 const viewMyStats = document.getElementById("viewMyStats");
 
+// screens
+const landingScreen = document.getElementById("landingScreen");
+const runScreen = document.getElementById("runScreen");
+
+// overlay
+const overlay = document.getElementById("overlay");
+const overlayText = document.getElementById("overlayText");
+
+// connection badge
+const connBadge = document.getElementById("connBadge");
+const connText = document.getElementById("connText");
+
 nameInput.value = riderName;
 circInput.value = circ_m.toFixed(3);
 status('Use Chrome/Edge on HTTPS (or http://localhost). iOS Safari is unsupported for Web Bluetooth.');
 
-nameInput.addEventListener('input', () => {
-  riderName = nameInput.value.trim();
-  localStorage.setItem("rider_name", riderName);
-  updatePlacementFromBoard();   // refresh rank pill
-  attachMyRunsListener();       // (re)attach my-runs feed
-});
-circInput.addEventListener('change', () => {
-  const v = Number(circInput.value);
-  if (!Number.isFinite(v) || v <= 0.3 || v > 5) { alert('Enter a valid circumference (m).'); circInput.value = circ_m.toFixed(3); return; }
-  circ_m = v;
-  localStorage.setItem("circ_m", circ_m);
+// ===== Gauges =====
+const gaugeArc = document.getElementById("gaugeArc");
+let gaugeLen = 1;
+let gaugeMax = 60; // km/h target, auto-extends
+const gaugeNum = document.getElementById("gaugeNum");
+const gaugeMaxLbl = document.getElementById("gaugeMaxLbl");
+
+// measure path length once SVG is ready
+requestAnimationFrame(() => {
+  try { gaugeLen = gaugeArc.getTotalLength(); } catch {}
+  gaugeArc.setAttribute('stroke-dasharray', `0 ${gaugeLen}`);
+  gaugeMaxLbl.textContent = Math.round(gaugeMax);
 });
 
-// Chart
+// ===== Chart (linear x; keeps panning smoothly) =====
 const ctx = document.getElementById('spdChart').getContext('2d');
 const chart = new Chart(ctx, {
   type: 'line',
-  data: { labels: [], datasets: [{ label: 'Speed (km/h)', data: [], tension: 0.25, pointRadius: 0 }] },
+  data: {
+    datasets: [{
+      label: 'Speed (km/h)',
+      data: [],         // {x: seconds, y: km/h}
+      parsing: false,
+      tension: 0.25,
+      pointRadius: 0
+    }]
+  },
   options: {
     animation: false,
     responsive: true,
-    maintainAspectRatio: false,   // ← add this line
+    maintainAspectRatio: false,
     scales: {
-      x: { title: { display: true, text: 'Time (s)' } },
+      x: {
+        type:'linear',
+        min: 0,
+        max: 10,       // start with 10s window; will slide
+        title: { display:true, text:'Time (s)'}
+      },
       y: { title: { display: true, text: 'km/h' }, suggestedMin: 0 }
     },
     plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } }
   }
 });
+const WINDOW_S = 10; // sliding window seconds
+let lastChartUpdate = 0;
 
 function addChartPoint(t, kmh) {
-  const w = Number(smoothSelect.value);
-  if (w > 1) {
-    const arr = chart.data.datasets[0].data;
-    const last = arr.slice(-(w-1));
-    kmh = (last.reduce((s,v)=>s+v,0) + kmh) / (last.length + 1);
-  }
-  chart.data.labels.push(t.toFixed(1));
-  chart.data.datasets[0].data.push(kmh);
-  chart.update('none');
+  // smoothing (moving average) using UI select if you add one later to run screen
+  chart.data.datasets[0].data.push({x:t, y:kmh});
+  // keep array from growing too big
+  while (chart.data.datasets[0].data.length > 1200) chart.data.datasets[0].data.shift();
 }
 
-// Tabs behavior
+function updateChartWindow(elapsedS) {
+  const max = Math.max(WINDOW_S, Math.min(30, elapsedS + 0.2));
+  const min = Math.max(0, max - WINDOW_S);
+  chart.options.scales.x.min = min;
+  chart.options.scales.x.max = max;
+  const now = performance.now();
+  if (now - lastChartUpdate > 90) { // ~11fps to keep it smooth but light
+    chart.update('none');
+    lastChartUpdate = now;
+  }
+}
+
+// ===== Tabs behavior =====
 function setTab(which){
   const onLeader = which === 'leader';
   tabLeaderboard.classList.toggle('active', onLeader);
@@ -354,20 +436,38 @@ tabLeaderboard.onclick = () => setTab('leader');
 tabMyStats.onclick = () => setTab('me');
 setTab('leader');
 
-// Buttons
+// ===== Buttons =====
 connectBtn.addEventListener('click', ensureConnected);
 disconnectBtn.addEventListener('click', disconnectNow);
-startBtn.addEventListener('click', startTest);
+landingStartBtn.addEventListener('click', handleStartFlow);
+backBtn.addEventListener('click', () => {
+  if (testRunning) stopTestEarly('Stopped (back)');
+  gotoScreen('landing');
+});
 stopBtn.addEventListener('click', () => stopTestEarly('Stopped by user'));
 dlRunBtn.addEventListener('click', downloadRunCsv);
 dlSummaryBtn.addEventListener('click', downloadLeaderboardCsv);
 dlMineBtn.addEventListener('click', downloadMyRunsCsv);
 
-// BLE lifecycle
+nameInput.addEventListener('input', () => {
+  riderName = nameInput.value.trim();
+  localStorage.setItem("rider_name", riderName);
+  updatePlacementFromBoard();
+  attachMyRunsListener();
+});
+circInput.addEventListener('change', () => {
+  const v = Number(circInput.value);
+  if (!Number.isFinite(v) || v <= 0.3 || v > 5) { alert('Enter a valid circumference (m).'); circInput.value = circ_m.toFixed(3); return; }
+  circ_m = v;
+  localStorage.setItem("circ_m", circ_m);
+});
+
+// ===== BLE lifecycle =====
 async function ensureConnected() {
   if (connected && charMeas && server?.connected) { status('Already connected.'); return; }
   if (!('bluetooth' in navigator)) { status('❌ Web Bluetooth not supported in this browser.'); return; }
   try {
+    setConnState('connecting');
     status('Requesting device…');
     device = await navigator.bluetooth.requestDevice({
       acceptAllDevices: true,
@@ -386,9 +486,11 @@ async function ensureConnected() {
     connected = true;
     connectBtn.disabled = true;
     disconnectBtn.disabled = false;
-    startBtn.disabled = false;
+    landingStartBtn.disabled = false;
+    setConnState('online', device?.name ? `Connected (${device.name})` : 'Connected');
     status('✅ Connected. Ready to start.');
   } catch (e) {
+    setConnState('offline');
     status('❌ ' + e);
     console.error(e);
   }
@@ -404,9 +506,9 @@ function onDisconnected() {
   device = server = service = charMeas = null;
   connectBtn.disabled = false;
   disconnectBtn.disabled = true;
-  startBtn.disabled = true;
-  stopBtn.disabled = true;
+  landingStartBtn.disabled = true;
   if (testRunning) stopTestEarly('Sensor disconnected');
+  setConnState('offline');
   status('Disconnected.');
 }
 function onCsc(evt) {
@@ -439,41 +541,84 @@ function onCsc(evt) {
       const tElapsed = (TEST_MS - Math.max(0, testEndsAt - now)) / 1000;
       samples.push({ t: tElapsed, kmh });
       addChartPoint(tElapsed, kmh);
+      updateGauge(kmh);
       liveSpeedEl.textContent = `${kmh.toFixed(1)} km/h`;
     }
   }
   lastPacket = { revs, tTicks, wall: now };
 }
 
-// Test control
-async function startTest() {
+// ===== Screen flow =====
+function gotoScreen(which){
+  const toRun = which === 'run';
+  landingScreen.classList.toggle('hidden', toRun);
+  runScreen.classList.toggle('hidden', !toRun);
+}
+
+async function handleStartFlow(){
   if (!connected) { await ensureConnected(); if (!connected) return; }
+  // go to run screen + cinematic countdown
+  gotoScreen('run');
+  await doCountdownOverlay();
+  startTest();
+}
+
+// ===== Countdown overlay =====
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+async function doCountdownOverlay(){
+  overlay.classList.remove('hidden');
+  for (const n of [3,2,1]){
+    overlayText.className = 'countNum';
+    overlayText.textContent = n;
+    await sleep(800);
+  }
+  overlayText.className = 'countNum countGo';
+  overlayText.textContent = 'GO!';
+  await sleep(500);
+  overlay.classList.add('hidden');
+}
+
+// ===== Test control =====
+async function startTest() {
   testRunning = true;
+  runScreen.classList.remove('ending');
   baseRevs = null; distance_m = 0; lastPacket = null;
   samples.length = 0;
-  chart.data.labels = []; chart.data.datasets[0].data = []; chart.update();
+  chart.data.datasets[0].data = [];
+  chart.options.scales.x.min = 0; chart.options.scales.x.max = WINDOW_S; chart.update('none');
   liveSpeedEl.textContent = '0.0 km/h';
   finalDistEl.textContent = '–'; avgSpeedEl.textContent = '–'; maxSpeedEl.textContent = '–';
-
-  startBtn.disabled = true; stopBtn.disabled = false;
+  timeFill.style.width = '0%';
+  stopBtn.disabled = false;
 
   testEndsAt = Date.now() + TEST_MS;
   status('Starting 30 s… move the wheel!');
   tick(); setTimeout(finishTest, TEST_MS);
 }
 function tick() {
-  const remaining = Math.max(0, testEndsAt - Date.now());
-  countdownEl.textContent = testRunning ? `${(remaining/1000).toFixed(1)}s` : '';
-  if (testRunning) rafId = requestAnimationFrame(tick);
+  if (!testRunning) return;
+  const now = Date.now();
+  const remaining = Math.max(0, testEndsAt - now);
+  const elapsed = (TEST_MS - remaining) / 1000;
+  // progress bar
+  timeFill.style.width = `${(elapsed / (TEST_MS/1000))*100}%`;
+  // chart panning independent of notifications
+  updateChartWindow(elapsed);
+
+  // final 5 seconds: add pulse
+  if (remaining <= 5000) runScreen.classList.add('ending');
+
+  rafId = requestAnimationFrame(tick);
 }
 function stopTestEarly(reason) {
   testRunning = false; if (rafId) cancelAnimationFrame(rafId);
-  startBtn.disabled = false; stopBtn.disabled = true;
+  stopBtn.disabled = true;
   status(reason || 'Stopped.');
 }
 async function finishTest() {
   if (!testRunning) return;
   testRunning = false; if (rafId) cancelAnimationFrame(rafId);
+  stopBtn.disabled = true;
 
   const km = distance_m / 1000;
   const avgKmh = km * 3600 / 30;
@@ -484,7 +629,6 @@ async function finishTest() {
   maxSpeedEl.textContent = `${maxKmh.toFixed(1)} km/h`;
 
   status('Done.');
-  startBtn.disabled = false; stopBtn.disabled = true;
 
   const name = (riderName || 'Rider').slice(0, 64);
   const tsLocal = new Date().toISOString().replace('T',' ').slice(0,19);
@@ -509,13 +653,14 @@ async function finishTest() {
   }
   localRuns.push({ ts: tsLocal, name, km, avg: avgKmh, max: maxKmh });
 }
-// ===== Realtime LEADERBOARD (bests_col), show podium + table and highlight "me"
+
+// ===== Leaderboard (bests_col) =====
 let leaderboard = [];
 bestsRef.orderBy("km","desc").limit(200).onSnapshot(
   snap => {
     leaderboard = snap.docs.map(d => d.data());
     renderLeaderboard();
-    updatePlacementFromBoard();   // keeps the pill + My stats rank in sync
+    updatePlacementFromBoard();
     updateMyBestFromBoard();
   },
   err => { console.error('Leaderboard error:', err); status('Firestore error: ' + err.message); }
@@ -544,7 +689,7 @@ function renderLeaderboard(){
   // Full table
   leaderboard.forEach((r, idx)=>{
     const tr = document.createElement('tr');
-    if ((r.name||'').toLowerCase() === me) tr.classList.add('me');  // highlight my row
+    if ((r.name||'').toLowerCase() === me) tr.classList.add('me');
     tr.innerHTML = `
       <td>${idx+1}</td>
       <td>${escapeHtml(r.name||'')}</td>
@@ -556,7 +701,7 @@ function renderLeaderboard(){
   });
 }
 
-// ===== “My stats” live (no composite index; we sort client-side)
+// ===== My runs live =====
 let myRunsUnsub = null;
 function attachMyRunsListener(){
   if (myRunsUnsub) { myRunsUnsub(); myRunsUnsub = null; }
@@ -567,7 +712,6 @@ function attachMyRunsListener(){
   myRunsUnsub = runsRef.where('name','==', name).onSnapshot(snap => {
     const items = [];
     snap.forEach(d => items.push(d.data()));
-    // sort newest first by 't' if present
     items.sort((a,b)=> (b.t||0) - (a.t||0));
     myRunsBody.innerHTML = "";
     items.forEach((r,i) => {
@@ -576,7 +720,6 @@ function attachMyRunsListener(){
                       <td>${Number(r.avg||0).toFixed(1)}</td><td>${Number(r.max||0).toFixed(1)}</td>`;
       myRunsBody.appendChild(tr);
     });
-    // best (client side)
     if (items.length){
       const best = items.reduce((a,b)=> (Number(a.km||0) >= Number(b.km||0) ? a : b));
       meBestKm.textContent = Number(best.km||0).toFixed(3);
@@ -590,23 +733,15 @@ function attachMyRunsListener(){
 }
 attachMyRunsListener();
 
-// Helpers for placement
+// ===== Helpers for placement =====
 function updatePlacementFromBoard(){
   const name = riderName.trim().toLowerCase();
-  if (!name){ placementPill.classList.add('hidden'); mePlace.textContent = '–'; return; }
+  if (!name){ mePlace.textContent = '–'; return; }
   let place = null;
   for (let i=0;i<leaderboard.length;i++){
     if ((leaderboard[i].name||'').toLowerCase() === name){ place = i+1; break; }
   }
-  if (place){
-    placementPill.classList.remove('hidden');
-    placementRank.textContent = '#' + place;
-    mePlace.textContent = place;
-  } else {
-    placementPill.classList.remove('hidden');
-    placementRank.textContent = '#–';
-    mePlace.textContent = '–';
-  }
+  mePlace.textContent = place || '–';
 }
 function updateMyBestFromBoard(){
   const name = riderName.trim().toLowerCase();
@@ -618,7 +753,7 @@ function updateMyBestFromBoard(){
   }
 }
 
-// CSV exports
+// ===== CSV exports =====
 function downloadRunCsv() {
   if (!samples.length) return;
   const header = 't_seconds,kmh\n';
@@ -648,10 +783,29 @@ function saveBlob(text, filename, type) {
   a.click(); URL.revokeObjectURL(url);
 }
 
-// Utils
+// ===== UI helpers =====
 function status(msg){ statusEl.textContent = msg; }
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 function csvSafe(s){ return `"${String(s).replace(/"/g,'""')}"`; }
+
+function setConnState(state, text){
+  connBadge.classList.remove('online','offline','connecting');
+  connBadge.classList.add(state);
+  connText.textContent = text || (state==='online'?'Connected' : state==='connecting'?'Connecting…':'Not connected');
+}
+
+// ===== Gauge update =====
+function updateGauge(kmh){
+  // auto-extend gauge if needed
+  if (kmh > gaugeMax * 0.95) {
+    gaugeMax = Math.ceil(Math.max(kmh*1.2, gaugeMax*1.25) / 10) * 10;
+    gaugeMaxLbl.textContent = Math.round(gaugeMax);
+  }
+  const pct = Math.max(0, Math.min(1, kmh / gaugeMax));
+  const filled = gaugeLen * pct;
+  gaugeArc.setAttribute('stroke-dasharray', `${filled} ${gaugeLen - filled}`);
+  gaugeNum.textContent = kmh.toFixed(1);
+}
 </script>
 </body>
 </html>
