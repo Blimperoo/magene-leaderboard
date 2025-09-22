@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>30s Distance Test</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Chart.js (tiny, no bundler needed) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    :root { --w: min(980px, 94%); --card: #ffffff; --muted:#6b7280; --line:#e5e7eb; }
+    *{box-sizing:border-box}
+    body{font-family:ui-sans-serif,system-ui,Segoe UI,Arial,sans-serif;background:#fafafa;margin:0;padding:32px;display:flex;flex-direction:column;align-items:center}
+    h1{font-size:40px;margin:0 0 8px}
+    .sub{color:var(--muted);margin-bottom:22px}
+    .toolbar{display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:center;margin-bottom:16px}
+    .card{width:var(--w);background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 6px 16px rgba(0,0,0,.05);padding:18px;margin:10px 0}
+    label{font-size:14px;color:#374151}
+    input,button,select{font-size:16px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:#fff}
+    button{cursor:pointer}
+    button:disabled{opacity:.5;cursor:not-allowed}
+    #countdown{font-size:56px;margin:6px 0}
+    #live,#result,#status{font-size:18px;margin:4px 0}
+    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:8px}
+    .metric{background:#f8fafc;border:1px solid var(--line);border-radius:12px;padding:12px;text-align:center}
+    .metric b{display:block;font-size:22px;margin-top:4px}
+    table{width:100%;border-collapse:collapse;margin-top:8px}
+    th,td{border-bottom:1px solid var(--line);padding:10px;text-align:left}
+    th{color:#111827;background:#f7f7f7}
+    .grow{flex:1}
+    .right{display:flex;gap:10px;flex-wrap:wrap}
+    canvas{width:100%!important;height:320px!important}
+    .fine{font-size:12px;color:var(--muted)}
+  </style>
+</head>
+<body>
+  <h1>30s Distance Test</h1>
+  <div class="sub">Connect a Cycling Speed &amp; Cadence sensor (wheel data) to measure distance and show live speed.</div>
+
+  <div class="card">
+    <div class="toolbar">
+      <div>
+        <label>Name</label><br/>
+        <input id="nameInput" placeholder="Rider name" />
+      </div>
+      <div>
+        <label>Tyre circumference (m)</label><br/>
+        <input id="circInput" type="number" step="0.001" min="0.5" max="5" />
+      </div>
+      <div>
+        <label>Smoothing</label><br/>
+        <select id="smoothSelect">
+          <option value="1">None</option>
+          <option value="3">3-pt</option>
+          <option value="5" selected>5-pt</option>
+          <option value="7">7-pt</option>
+        </select>
+      </div>
+      <span class="grow"></span>
+      <div class="right">
+        <button id="connectBtn">Connect</button>
+        <button id="startBtn" disabled>Start 30s</button>
+        <button id="stopBtn" disabled>Stop</button>
+        <button id="disconnectBtn" disabled>Disconnect</button>
+      </div>
+    </div>
+    <div id="status" class="fine"></div>
+  </div>
+
+  <div class="card">
+    <div id="countdown"></div>
+    <div class="grid">
+      <div class="metric"><span>Live speed</span><b id="liveSpeed">0.0 km/h</b></div>
+      <div class="metric"><span>Final distance</span><b id="finalDist">–</b></div>
+      <div class="metric"><span>Avg speed (30s)</span><b id="avgSpeed">–</b></div>
+      <div class="metric"><span>Max speed (30s)</span><b id="maxSpeed">–</b></div>
+    </div>
+    <div style="margin-top:16px">
+      <canvas id="spdChart"></canvas>
+    </div>
+    <div class="right" style="margin-top:12px">
+      <button id="downloadRunBtn">Download run CSV</button>
+    </div>
+  </div>
+
+  <div class="card" style="padding-top:10px">
+    <div style="display:flex;align-items:center;gap:12px;justify-content:space-between">
+      <div><b>Completed Runs</b></div>
+      <button id="downloadSummaryBtn">Download summary CSV</button>
+    </div>
+    <table id="logTable">
+      <thead><tr><th>#</th><th>Time</th><th>Name</th><th>Distance (km)</th><th>Avg (km/h)</th><th>Max (km/h)</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+<script>
+/* ===== Constants ===== */
+const UUID_CSC_SERVICE = 0x1816;   // Cycling Speed & Cadence
+const UUID_CSC_MEAS    = 0x2A5B;   // CSC Measurement (Notify)
+const TEST_MS = 30_000;
+
+/* ===== State ===== */
+let circ_m = Number(localStorage.getItem("circ_m")) || 2.096;
+let riderName = localStorage.getItem("rider_name") || "";
+
+let device, server, service, charMeas, connected = false;
+let testRunning = false, testEndsAt = 0, rafId = null;
+
+let baseRevs = null;           // wheel revs at test start (uint32)
+let distance_m = 0;
+
+let lastPacket = null;         // {revs, tTicks, wall}
+const samples = [];            // per-sample speed points for the chart [{t, kmh}]
+
+const runs = [];               // completed runs for summary table
+
+/* ===== UI refs ===== */
+const nameInput = document.getElementById("nameInput");
+const circInput = document.getElementById("circInput");
+const smoothSelect = document.getElementById("smoothSelect");
+
+const connectBtn = document.getElementById("connectBtn");
+const startBtn = document.getElementById("startBtn");
+const stopBtn = document.getElementById("stopBtn");
+const disconnectBtn = document.getElementById("disconnectBtn");
+
+const statusEl = document.getElementById("status");
+const countdownEl = document.getElementById("countdown");
+const liveSpeedEl = document.getElementById("liveSpeed");
+const finalDistEl = document.getElementById("finalDist");
+const avgSpeedEl = document.getElementById("avgSpeed");
+const maxSpeedEl = document.getElementById("maxSpeed");
+
+const logBody = document.querySelector("#logTable tbody");
+const dlRunBtn = document.getElementById("downloadRunBtn");
+const dlSummaryBtn = document.getElementById("downloadSummaryBtn");
+
+/* ===== Init UI ===== */
+nameInput.value = riderName;
+circInput.value = circ_m.toFixed(3);
+status('Use Chrome/Edge on HTTPS (or http://localhost). iOS Safari is unsupported for Web Bluetooth.');
+
+nameInput.addEventListener('input', () => {
+  riderName = nameInput.value.trim();
+  localStorage.setItem("rider_name", riderName);
+});
+circInput.addEventListener('change', () => {
+  const v = Number(circInput.value);
+  if (!Number.isFinite(v) || v <= 0.3 || v > 5) { alert('Enter a valid circumference (m).'); circInput.value = circ_m.toFixed(3); return; }
+  circ_m = v;
+  localStorage.setItem("circ_m", circ_m);
+});
+
+/* ===== Chart ===== */
+const ctx = document.getElementById('spdChart').getContext('2d');
+const chart = new Chart(ctx, {
+  type: 'line',
+  data: { labels: [], datasets: [{ label: 'Speed (km/h)', data: [], tension: 0.25, pointRadius: 0 }] },
+  options: {
+    animation: false,
+    responsive: true,
+    scales: {
+      x: { title: { display: true, text: 'Time (s)' } },
+      y: { title: { display: true, text: 'km/h' }, suggestedMin: 0 }
+    },
+    plugins: {
+      legend: { display: false },
+      tooltip: { mode: 'index', intersect: false }
+    }
+  }
+});
+
+function addChartPoint(t, kmh) {
+  const w = Number(smoothSelect.value);
+  if (w > 1) {
+    // simple moving average using last (w-1) points + this one
+    const arr = chart.data.datasets[0].data;
+    const last = arr.slice(-(w-1));
+    const avg = (last.reduce((s,v)=>s+v,0) + kmh) / (last.length + 1);
+    kmh = avg;
+  }
+  chart.data.labels.push(t.toFixed(1));
+  chart.data.datasets[0].data.push(kmh);
+  chart.update('none');
+}
+
+/* ===== Buttons ===== */
+connectBtn.addEventListener('click', ensureConnected);
+disconnectBtn.addEventListener('click', disconnectNow);
+startBtn.addEventListener('click', startTest);
+stopBtn.addEventListener('click', () => stopTestEarly('Stopped by user'));
+dlRunBtn.addEventListener('click', downloadRunCsv);
+dlSummaryBtn.addEventListener('click', downloadSummaryCsv);
+
+/* ===== BLE lifecycle ===== */
+async function ensureConnected() {
+  if (connected && charMeas && server?.connected) { status('Already connected.'); return; }
+  if (!('bluetooth' in navigator)) { status('❌ Web Bluetooth not supported in this browser.'); return; }
+  try {
+    status('Requesting device…');
+    device = await navigator.bluetooth.requestDevice({ filters: [{ services: [UUID_CSC_SERVICE] }] });
+    device.addEventListener('gattserverdisconnected', onDisconnected);
+
+    status('Connecting…');
+    server = await device.gatt.connect();
+    service = await server.getPrimaryService(UUID_CSC_SERVICE);
+
+    charMeas = await service.getCharacteristic(UUID_CSC_MEAS);
+    await charMeas.startNotifications();
+    charMeas.addEventListener('characteristicvaluechanged', onCsc);
+    connected = true;
+    connectBtn.disabled = true;
+    disconnectBtn.disabled = false;
+    startBtn.disabled = false;
+    status('✅ Connected. Ready to start.');
+  } catch (e) { status('❌ ' + e); }
+}
+async function disconnectNow() {
+  try {
+    if (charMeas) { charMeas.removeEventListener('characteristicvaluechanged', onCsc); try{ await charMeas.stopNotifications(); }catch{} }
+    if (server?.connected) server.disconnect();
+  } finally { onDisconnected(); }
+}
+function onDisconnected() {
+  connected = false;
+  device = server = service = charMeas = null;
+  connectBtn.disabled = false;
+  disconnectBtn.disabled = true;
+  startBtn.disabled = true;
+  stopBtn.disabled = true;
+  if (testRunning) stopTestEarly('Sensor disconnected');
+  status('Disconnected.');
+}
+
+function onCsc(evt) {
+  if (!testRunning) return;
+  const dv = evt.target.value;
+  const flags = dv.getUint8(0);
+  if ((flags & 0x01) === 0) return; 
+
+  const revs = dv.getUint32(1, true);
+  const tTicks = dv.getUint16(5, true); 
+  const now = Date.now();
+
+  if (baseRevs === null) baseRevs = revs;
+
+  // distance from base
+  const deltaRevs = (revs - baseRevs) >>> 0;
+  distance_m = deltaRevs * circ_m;
+
+  if (lastPacket) {
+    const dRevs = (revs - lastPacket.revs) >>> 0;
+    // handle 16-bit tick wrap
+    const dTicks = (tTicks - lastPacket.tTicks + 0x10000) & 0xFFFF;
+    let kmh = 0;
+    if (dRevs > 0 && dTicks > 0) {
+      const dt = dTicks / 1024; // seconds
+      const mps = (dRevs * circ_m) / dt;
+      kmh = mps * 3.6;
+    } else {
+      const dtWall = (now - lastPacket.wall) / 1000;
+      if (dRevs > 0 && dtWall > 0) kmh = ((dRevs * circ_m) / dtWall) * 3.6;
+    }
+    if (kmh >= 0) {
+      const tElapsed = (TEST_MS - Math.max(0, testEndsAt - now)) / 1000;
+      samples.push({ t: tElapsed, kmh });
+      addChartPoint(tElapsed, kmh);
+      liveSpeedEl.textContent = `${kmh.toFixed(1)} km/h`;
+    }
+  }
+  lastPacket = { revs, tTicks, wall: now };
+}
+
+/* ===== Test control ===== */
+async function startTest() {
+  if (!connected) { await ensureConnected(); if (!connected) return; }
+  // reset
+  testRunning = true;
+  baseRevs = null;
+  distance_m = 0;
+  lastPacket = null;
+  samples.length = 0;
+  chart.data.labels = [];
+  chart.data.datasets[0].data = [];
+  chart.update();
+  liveSpeedEl.textContent = '0.0 km/h';
+  finalDistEl.textContent = '–';
+  avgSpeedEl.textContent = '–';
+  maxSpeedEl.textContent = '–';
+  resultStats = null;
+
+  startBtn.disabled = true;
+  stopBtn.disabled = false;
+
+  testEndsAt = Date.now() + TEST_MS;
+  status('Starting 30 s… move the wheel!');
+  tick();
+  setTimeout(finishTest, TEST_MS);
+}
+function tick() {
+  const remaining = Math.max(0, testEndsAt - Date.now());
+  countdownEl.textContent = testRunning ? `${(remaining/1000).toFixed(1)}s` : '';
+  if (testRunning) rafId = requestAnimationFrame(tick);
+}
+function stopTestEarly(reason) {
+  testRunning = false;
+  if (rafId) cancelAnimationFrame(rafId);
+  startBtn.disabled = false;
+  stopBtn.disabled = true;
+  status(reason || 'Stopped.');
+}
+function finishTest() {
+  if (!testRunning) return;
+  testRunning = false;
+  if (rafId) cancelAnimationFrame(rafId);
+
+  const km = distance_m / 1000;
+  const avgKmh = km * 3600 / 30; 
+  const maxKmh = samples.length ? Math.max(...samples.map(s => s.kmh)) : 0;
+
+  finalDistEl.textContent = `${km.toFixed(3)} km`;
+  avgSpeedEl.textContent = `${avgKmh.toFixed(1)} km/h`;
+  maxSpeedEl.textContent = `${maxKmh.toFixed(1)} km/h`;
+
+  status('Done.');
+  startBtn.disabled = false;
+  stopBtn.disabled = true;
+
+  // log summary row
+  const name = riderName || 'Rider';
+  const ts = new Date().toISOString().replace('T',' ').slice(0,19);
+  runs.push({ ts, name, km, avg: avgKmh, max: maxKmh });
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td>${runs.length}</td><td>${ts}</td><td>${escapeHtml(name)}</td>
+                  <td>${km.toFixed(3)}</td><td>${avgKmh.toFixed(1)}</td><td>${maxKmh.toFixed(1)}</td>`;
+  logBody.appendChild(tr);
+}
+
+//csv
+function downloadRunCsv() {
+  if (!samples.length) return;
+  const header = 't_seconds,kmh\n';
+  const body = samples.map(s => `${s.t.toFixed(3)},${s.kmh.toFixed(3)}`).join('\n');
+  saveBlob(header + body, 'run_speed_series.csv', 'text/csv');
+}
+function downloadSummaryCsv() {
+  if (!runs.length) return;
+  const header = 'index,timestamp,name,distance_km,avg_kmh,max_kmh\n';
+  const body = runs.map((r,i)=>`${i+1},${r.ts},${csvSafe(r.name)},${r.km.toFixed(3)},${r.avg.toFixed(1)},${r.max.toFixed(1)}`).join('\n');
+  saveBlob(header + body, 'runs_summary.csv', 'text/csv');
+}
+function saveBlob(text, filename, type) {
+  const blob = new Blob([text], { type });
+  const url = URL.createObjectURL(blob);
+  const a = Object.assign(document.createElement('a'), { href:url, download:filename });
+  a.click(); URL.revokeObjectURL(url);
+}
+
+//???
+function status(msg){ statusEl.textContent = msg; }
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m => ({'&':'&lt;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]); }
+function csvSafe(s){ return `"${String(s).replace(/"/g,'""')}"`; }
+</script>
+</body>
+</html>
