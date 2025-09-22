@@ -8,12 +8,12 @@
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
-  <!-- Firebase (CDN compat build; easiest for a single-file app) -->
+  <!-- Firebase (compat for single-file apps) -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
   <style>
-    :root { --w: min(980px, 94%); --card: #ffffff; --muted:#6b7280; --line:#e5e7eb; }
+    :root { --w: min(980px, 94%); --card:#fff; --muted:#6b7280; --line:#e5e7eb; --pill:#eef2ff; --pilltext:#4338ca; }
     *{box-sizing:border-box}
     body{font-family:ui-sans-serif,system-ui,Segoe UI,Arial,sans-serif;background:#fafafa;margin:0;padding:32px;display:flex;flex-direction:column;align-items:center}
     h1{font-size:40px;margin:0 0 8px}
@@ -36,6 +36,12 @@
     .right{display:flex;gap:10px;flex-wrap:wrap}
     canvas{width:100%!important;height:320px!important}
     .fine{font-size:12px;color:var(--muted)}
+
+    .pill{display:inline-flex;align-items:center;gap:8px;background:var(--pill);color:var(--pilltext);padding:6px 10px;border-radius:999px;font-weight:600}
+    .tabs{display:flex;gap:8px;margin-bottom:10px}
+    .tab{border-radius:10px;border:1px solid var(--line);background:#fff;padding:8px 12px}
+    .tab.active{background:#111827;color:#fff;border-color:#111827}
+    .hidden{display:none}
   </style>
 </head>
 <body>
@@ -70,6 +76,9 @@
       </div>
     </div>
     <div id="status" class="fine"></div>
+    <div class="fine" style="margin-top:6px">
+      <span id="placementPill" class="pill hidden">You’re currently <span id="placementRank">#–</span></span>
+    </div>
   </div>
 
   <div class="card">
@@ -89,19 +98,43 @@
   </div>
 
   <div class="card" style="padding-top:10px">
-    <div style="display:flex;align-items:center;gap:12px;justify-content:space-between">
-      <div><b>Completed Runs (live)</b></div>
-      <button id="downloadSummaryBtn">Download summary CSV</button>
+    <div class="tabs">
+      <button id="tabLeaderboard" class="tab active">Leaderboard</button>
+      <button id="tabMyStats" class="tab">My stats</button>
+      <span class="grow"></span>
+      <button id="downloadSummaryBtn">Download leaderboard CSV</button>
     </div>
-    <table id="logTable">
-      <thead><tr><th>#</th><th>Time</th><th>Name</th><th>Distance (km)</th><th>Avg (km/h)</th><th>Max (km/h)</th></tr></thead>
-      <tbody></tbody>
-    </table>
+
+    <!-- Leaderboard view -->
+    <div id="viewLeaderboard">
+      <table>
+        <thead>
+          <tr><th>#</th><th>Name</th><th>Best distance (km)</th><th>Best avg (km/h)</th><th>Best max (km/h)</th><th>When</th></tr>
+        </thead>
+        <tbody id="leaderBody"></tbody>
+      </table>
+    </div>
+
+    <!-- My stats view -->
+    <div id="viewMyStats" class="hidden">
+      <div class="grid">
+        <div class="metric"><span>Your best distance</span><b id="meBestKm">–</b></div>
+        <div class="metric"><span>Your best avg</span><b id="meBestAvg">–</b></div>
+        <div class="metric"><span>Your best max</span><b id="meBestMax">–</b></div>
+        <div class="metric"><span>Your place</span><b id="mePlace">–</b></div>
+      </div>
+      <div class="right" style="margin-top:12px">
+        <button id="downloadMineBtn">Download my runs CSV</button>
+      </div>
+      <table style="margin-top:8px">
+        <thead><tr><th>#</th><th>Time</th><th>Distance (km)</th><th>Avg (km/h)</th><th>Max (km/h)</th></tr></thead>
+        <tbody id="myRunsBody"></tbody>
+      </table>
+    </div>
   </div>
 
 <script>
-/* ----------------- Firebase init (compat) ----------------- */
-// Your web app's Firebase configuration (from your screenshot)
+/* ----------------- Firebase init ----------------- */
 const firebaseConfig = {
   apiKey: "AIzaSyDHA4E04lijTLBCPEr85XtyDsjMNhUTsXA",
   authDomain: "magene-distance.firebaseapp.com",
@@ -111,11 +144,11 @@ const firebaseConfig = {
   appId: "1:102401152868:web:4fe96ce561a3258d9c8c71",
   measurementId: "G-6MEZNW0PMX"
 };
-// Initialize
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
-const runsRef = db.collection("runs_col");
-/* ---------------------------------------------------------- */
+const runsRef  = db.collection("runs_col");   // all runs
+const bestsRef = db.collection("bests_col");  // one doc per rider (best result)
+/* ------------------------------------------------- */
 
 /* ===== BLE + UI app ===== */
 const UUID_CSC_SERVICE = 0x1816;
@@ -128,12 +161,10 @@ let riderName = localStorage.getItem("rider_name") || "";
 let device, server, service, charMeas, connected = false;
 let testRunning = false, testEndsAt = 0, rafId = null;
 
-let baseRevs = null;
-let distance_m = 0;
-
-let lastPacket = null;         // {revs, tTicks, wall}
-const samples = [];            // {t, kmh}
-const localRuns = [];          // local fallback for CSV export
+let baseRevs = null, distance_m = 0;
+let lastPacket = null;  // {revs, tTicks, wall}
+const samples = [];
+const localRuns = [];
 
 const nameInput = document.getElementById("nameInput");
 const circInput = document.getElementById("circInput");
@@ -151,11 +182,25 @@ const finalDistEl = document.getElementById("finalDist");
 const avgSpeedEl = document.getElementById("avgSpeed");
 const maxSpeedEl = document.getElementById("maxSpeed");
 
-const logBody = document.querySelector("#logTable tbody");
+const leaderBody = document.getElementById("leaderBody");
+const myRunsBody = document.getElementById("myRunsBody");
 const dlRunBtn = document.getElementById("downloadRunBtn");
 const dlSummaryBtn = document.getElementById("downloadSummaryBtn");
+const dlMineBtn = document.getElementById("downloadMineBtn");
 
-// Init UI
+const placementPill = document.getElementById("placementPill");
+const placementRank = document.getElementById("placementRank");
+const meBestKm  = document.getElementById("meBestKm");
+const meBestAvg = document.getElementById("meBestAvg");
+const meBestMax = document.getElementById("meBestMax");
+const mePlace   = document.getElementById("mePlace");
+
+// tabs
+const tabLeaderboard = document.getElementById("tabLeaderboard");
+const tabMyStats = document.getElementById("tabMyStats");
+const viewLeaderboard = document.getElementById("viewLeaderboard");
+const viewMyStats = document.getElementById("viewMyStats");
+
 nameInput.value = riderName;
 circInput.value = circ_m.toFixed(3);
 status('Use Chrome/Edge on HTTPS (or http://localhost). iOS Safari is unsupported for Web Bluetooth.');
@@ -163,6 +208,8 @@ status('Use Chrome/Edge on HTTPS (or http://localhost). iOS Safari is unsupporte
 nameInput.addEventListener('input', () => {
   riderName = nameInput.value.trim();
   localStorage.setItem("rider_name", riderName);
+  updatePlacementFromBoard();   // refresh rank pill
+  attachMyRunsListener();       // (re)attach my-runs feed
 });
 circInput.addEventListener('change', () => {
   const v = Number(circInput.value);
@@ -191,13 +238,24 @@ function addChartPoint(t, kmh) {
   if (w > 1) {
     const arr = chart.data.datasets[0].data;
     const last = arr.slice(-(w-1));
-    const avg = (last.reduce((s,v)=>s+v,0) + kmh) / (last.length + 1);
-    kmh = avg;
+    kmh = (last.reduce((s,v)=>s+v,0) + kmh) / (last.length + 1);
   }
   chart.data.labels.push(t.toFixed(1));
   chart.data.datasets[0].data.push(kmh);
   chart.update('none');
 }
+
+// Tabs behavior
+function setTab(which){
+  const onLeader = which === 'leader';
+  tabLeaderboard.classList.toggle('active', onLeader);
+  tabMyStats.classList.toggle('active', !onLeader);
+  viewLeaderboard.classList.toggle('hidden', !onLeader);
+  viewMyStats.classList.toggle('hidden', onLeader);
+}
+tabLeaderboard.onclick = () => setTab('leader');
+tabMyStats.onclick = () => setTab('me');
+setTab('leader');
 
 // Buttons
 connectBtn.addEventListener('click', ensureConnected);
@@ -205,7 +263,8 @@ disconnectBtn.addEventListener('click', disconnectNow);
 startBtn.addEventListener('click', startTest);
 stopBtn.addEventListener('click', () => stopTestEarly('Stopped by user'));
 dlRunBtn.addEventListener('click', downloadRunCsv);
-dlSummaryBtn.addEventListener('click', downloadSummaryCsv);
+dlSummaryBtn.addEventListener('click', downloadLeaderboardCsv);
+dlMineBtn.addEventListener('click', downloadMyRunsCsv);
 
 // BLE lifecycle
 async function ensureConnected() {
@@ -213,7 +272,6 @@ async function ensureConnected() {
   if (!('bluetooth' in navigator)) { status('❌ Web Bluetooth not supported in this browser.'); return; }
   try {
     status('Requesting device…');
-    // Broader discovery so chooser appears even if 0x1816 isn't in ADV
     device = await navigator.bluetooth.requestDevice({
       acceptAllDevices: true,
       optionalServices: [UUID_CSC_SERVICE]
@@ -261,7 +319,7 @@ function onCsc(evt) {
   if ((flags & 0x01) === 0) return; // need wheel data
 
   const revs = dv.getUint32(1, true);
-  const tTicks = dv.getUint16(5, true); // 1/1024s ticks
+  const tTicks = dv.getUint16(5, true); // 1/1024s
   const now = Date.now();
 
   if (baseRevs === null) baseRevs = revs;
@@ -275,8 +333,7 @@ function onCsc(evt) {
     let kmh = 0;
     if (dRevs > 0 && dTicks > 0) {
       const dt = dTicks / 1024;
-      const mps = (dRevs * circ_m) / dt;
-      kmh = mps * 3.6;
+      kmh = ((dRevs * circ_m) / dt) * 3.6;
     } else {
       const dtWall = (now - lastPacket.wall) / 1000;
       if (dRevs > 0 && dtWall > 0) kmh = ((dRevs * circ_m) / dtWall) * 3.6;
@@ -295,25 +352,17 @@ function onCsc(evt) {
 async function startTest() {
   if (!connected) { await ensureConnected(); if (!connected) return; }
   testRunning = true;
-  baseRevs = null;
-  distance_m = 0;
-  lastPacket = null;
+  baseRevs = null; distance_m = 0; lastPacket = null;
   samples.length = 0;
-  chart.data.labels = [];
-  chart.data.datasets[0].data = [];
-  chart.update();
+  chart.data.labels = []; chart.data.datasets[0].data = []; chart.update();
   liveSpeedEl.textContent = '0.0 km/h';
-  finalDistEl.textContent = '–';
-  avgSpeedEl.textContent = '–';
-  maxSpeedEl.textContent = '–';
+  finalDistEl.textContent = '–'; avgSpeedEl.textContent = '–'; maxSpeedEl.textContent = '–';
 
-  startBtn.disabled = true;
-  stopBtn.disabled = false;
+  startBtn.disabled = true; stopBtn.disabled = false;
 
   testEndsAt = Date.now() + TEST_MS;
   status('Starting 30 s… move the wheel!');
-  tick();
-  setTimeout(finishTest, TEST_MS);
+  tick(); setTimeout(finishTest, TEST_MS);
 }
 function tick() {
   const remaining = Math.max(0, testEndsAt - Date.now());
@@ -321,16 +370,13 @@ function tick() {
   if (testRunning) rafId = requestAnimationFrame(tick);
 }
 function stopTestEarly(reason) {
-  testRunning = false;
-  if (rafId) cancelAnimationFrame(rafId);
-  startBtn.disabled = false;
-  stopBtn.disabled = true;
+  testRunning = false; if (rafId) cancelAnimationFrame(rafId);
+  startBtn.disabled = false; stopBtn.disabled = true;
   status(reason || 'Stopped.');
 }
 async function finishTest() {
   if (!testRunning) return;
-  testRunning = false;
-  if (rafId) cancelAnimationFrame(rafId);
+  testRunning = false; if (rafId) cancelAnimationFrame(rafId);
 
   const km = distance_m / 1000;
   const avgKmh = km * 3600 / 30;
@@ -341,42 +387,113 @@ async function finishTest() {
   maxSpeedEl.textContent = `${maxKmh.toFixed(1)} km/h`;
 
   status('Done.');
-  startBtn.disabled = false;
-  stopBtn.disabled = true;
+  startBtn.disabled = false; stopBtn.disabled = true;
 
-  // Save to Firestore (shared leaderboard)
   const name = (riderName || 'Rider').slice(0, 64);
   const tsLocal = new Date().toISOString().replace('T',' ').slice(0,19);
+
   try {
-    await runsRef.add({
-      ts: tsLocal,      // human-readable
-      name,
-      km: Number(km),
-      avg: Number(avgKmh),
-      max: Number(maxKmh),
-      // extra numeric key for sorting by recency if needed:
-      t: Date.now()
+    // 1) save run
+    await runsRef.add({ ts: tsLocal, name, km:Number(km), avg:Number(avgKmh), max:Number(maxKmh), t: Date.now() });
+
+    // 2) upsert personal best
+    const docId = name.toLowerCase();
+    await db.runTransaction(async tx => {
+      const ref = bestsRef.doc(docId);
+      const snap = await tx.get(ref);
+      const prev = snap.exists ? snap.data() : null;
+      if (!prev || Number(km) > Number(prev.km || 0)) {
+        tx.set(ref, { name, km:Number(km), avg:Number(avgKmh), max:Number(maxKmh), ts: tsLocal, t: Date.now() });
+      }
     });
   } catch (e) {
-    console.error('Failed to save run:', e);
+    console.error('Save failed:', e);
     status('⚠️ Saved locally only (offline).');
   }
-  // local fallback for CSV if offline
   localRuns.push({ ts: tsLocal, name, km, avg: avgKmh, max: maxKmh });
 }
 
-// Live leaderboard (realtime updates)
-runsRef.orderBy("km", "desc").orderBy("t", "asc").onSnapshot(snapshot => {
-  logBody.innerHTML = "";
-  let i = 1;
-  snapshot.forEach(doc => {
-    const r = doc.data();
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${i++}</td><td>${escapeHtml(r.ts || '')}</td><td>${escapeHtml(r.name || '')}</td>
-                    <td>${Number(r.km||0).toFixed(3)}</td><td>${Number(r.avg||0).toFixed(1)}</td><td>${Number(r.max||0).toFixed(1)}</td>`;
-    logBody.appendChild(tr);
-  });
-});
+// ===== Realtime LEADERBOARD (no composite index needed)
+let leaderboard = [];
+bestsRef.orderBy("km", "desc").limit(200).onSnapshot(
+  snap => {
+    leaderboard = [];
+    leaderBody.innerHTML = "";
+    let i = 1;
+    snap.forEach(doc => {
+      const r = doc.data(); leaderboard.push(r);
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${i++}</td><td>${escapeHtml(r.name||'')}</td><td>${Number(r.km||0).toFixed(3)}</td>
+                      <td>${Number(r.avg||0).toFixed(1)}</td><td>${Number(r.max||0).toFixed(1)}</td><td>${escapeHtml(r.ts||'')}</td>`;
+      leaderBody.appendChild(tr);
+    });
+    updatePlacementFromBoard();
+    updateMyBestFromBoard();
+  },
+  err => { console.error('Leaderboard error:', err); status('Firestore error: ' + err.message); }
+);
+
+// ===== “My stats” live (no composite index; we sort client-side)
+let myRunsUnsub = null;
+function attachMyRunsListener(){
+  if (myRunsUnsub) { myRunsUnsub(); myRunsUnsub = null; }
+  const name = riderName.trim();
+  myRunsBody.innerHTML = "";
+  if (!name) { meBestKm.textContent = meBestAvg.textContent = meBestMax.textContent = mePlace.textContent = '–'; return; }
+
+  myRunsUnsub = runsRef.where('name','==', name).onSnapshot(snap => {
+    const items = [];
+    snap.forEach(d => items.push(d.data()));
+    // sort newest first by 't' if present
+    items.sort((a,b)=> (b.t||0) - (a.t||0));
+    myRunsBody.innerHTML = "";
+    items.forEach((r,i) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${i+1}</td><td>${escapeHtml(r.ts||'')}</td><td>${Number(r.km||0).toFixed(3)}</td>
+                      <td>${Number(r.avg||0).toFixed(1)}</td><td>${Number(r.max||0).toFixed(1)}</td>`;
+      myRunsBody.appendChild(tr);
+    });
+    // best (client side)
+    if (items.length){
+      const best = items.reduce((a,b)=> (Number(a.km||0) >= Number(b.km||0) ? a : b));
+      meBestKm.textContent = Number(best.km||0).toFixed(3);
+      meBestAvg.textContent = Number(best.avg||0).toFixed(1);
+      meBestMax.textContent = Number(best.max||0).toFixed(1);
+    } else {
+      meBestKm.textContent = meBestAvg.textContent = meBestMax.textContent = '–';
+    }
+    updatePlacementFromBoard();
+  }, err => console.error(err));
+}
+attachMyRunsListener();
+
+// Helpers for placement
+function updatePlacementFromBoard(){
+  const name = riderName.trim().toLowerCase();
+  if (!name){ placementPill.classList.add('hidden'); mePlace.textContent = '–'; return; }
+  let place = null;
+  for (let i=0;i<leaderboard.length;i++){
+    if ((leaderboard[i].name||'').toLowerCase() === name){ place = i+1; break; }
+  }
+  if (place){
+    placementPill.classList.remove('hidden');
+    placementRank.textContent = '#' + place;
+    mePlace.textContent = place;
+  } else {
+    placementPill.classList.remove('hidden');
+    placementRank.textContent = '#–';
+    mePlace.textContent = '–';
+  }
+}
+function updateMyBestFromBoard(){
+  const name = riderName.trim().toLowerCase();
+  const row = leaderboard.find(r => (r.name||'').toLowerCase() === name);
+  if (row){
+    meBestKm.textContent  = Number(row.km||0).toFixed(3);
+    meBestAvg.textContent = Number(row.avg||0).toFixed(1);
+    meBestMax.textContent = Number(row.max||0).toFixed(1);
+  }
+}
 
 // CSV exports
 function downloadRunCsv() {
@@ -385,27 +502,21 @@ function downloadRunCsv() {
   const body = samples.map(s => `${s.t.toFixed(3)},${s.kmh.toFixed(3)}`).join('\n');
   saveBlob(header + body, 'run_speed_series.csv', 'text/csv');
 }
-function downloadSummaryCsv() {
-  if (!logBody.children.length && !localRuns.length) return;
-  const rows = [];
-  if (logBody.children.length) {
-    Array.from(logBody.children).forEach((tr, idx) => {
-      const tds = tr.querySelectorAll('td');
-      rows.push({
-        idx: idx+1,
-        ts: tds[1].textContent,
-        name: tds[2].textContent,
-        km: tds[3].textContent,
-        avg: tds[4].textContent,
-        max: tds[5].textContent
-      });
-    });
-  } else {
-    localRuns.forEach((r, i) => rows.push({ idx: i+1, ts: r.ts, name: r.name, km: r.km.toFixed(3), avg: r.avg.toFixed(1), max: r.max.toFixed(1) }));
-  }
-  const header = 'index,timestamp,name,distance_km,avg_kmh,max_kmh\n';
-  const body = rows.map(r => `${r.idx},${r.ts},${csvSafe(r.name)},${r.km},${r.avg},${r.max}`).join('\n');
-  saveBlob(header + body, 'runs_summary.csv', 'text/csv');
+function downloadLeaderboardCsv(){
+  if (!leaderboard.length) return;
+  const header = 'rank,name,km,avg_kmh,max_kmh,ts\n';
+  const body = leaderboard.map((r,i)=>`${i+1},${csvSafe(r.name||'')},${Number(r.km||0).toFixed(3)},${Number(r.avg||0).toFixed(1)},${Number(r.max||0).toFixed(1)},${r.ts||''}`).join('\n');
+  saveBlob(header+body,'leaderboard.csv','text/csv');
+}
+function downloadMyRunsCsv(){
+  const trs = Array.from(myRunsBody.children);
+  if (!trs.length) return;
+  const header = 'index,timestamp,distance_km,avg_kmh,max_kmh\n';
+  const body = trs.map((tr,i)=>{
+    const tds = tr.querySelectorAll('td');
+    return `${i+1},${tds[1].textContent},${tds[2].textContent},${tds[3].textContent},${tds[4].textContent}`;
+  }).join('\n');
+  saveBlob(header+body,'my_runs.csv','text/csv');
 }
 function saveBlob(text, filename, type) {
   const blob = new Blob([text], { type });
