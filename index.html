@@ -4,8 +4,14 @@
   <meta charset="utf-8" />
   <title>30s Distance Test</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- Chart.js (tiny, no bundler needed) -->
+
+  <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <!-- Firebase (CDN compat build; easiest for a single-file app) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
   <style>
     :root { --w: min(980px, 94%); --card: #ffffff; --muted:#6b7280; --line:#e5e7eb; }
     *{box-sizing:border-box}
@@ -84,7 +90,7 @@
 
   <div class="card" style="padding-top:10px">
     <div style="display:flex;align-items:center;gap:12px;justify-content:space-between">
-      <div><b>Completed Runs</b></div>
+      <div><b>Completed Runs (live)</b></div>
       <button id="downloadSummaryBtn">Download summary CSV</button>
     </div>
     <table id="logTable">
@@ -94,27 +100,41 @@
   </div>
 
 <script>
-/* ===== Constants ===== */
-const UUID_CSC_SERVICE = 0x1816;   // Cycling Speed & Cadence
-const UUID_CSC_MEAS    = 0x2A5B;   // CSC Measurement (Notify)
+/* ----------------- Firebase init (compat) ----------------- */
+// Your web app's Firebase configuration (from your screenshot)
+const firebaseConfig = {
+  apiKey: "AIzaSyDHA4E04lijTLBCPEr85XtyDsjMNhUTsXA",
+  authDomain: "magene-distance.firebaseapp.com",
+  projectId: "magene-distance",
+  storageBucket: "magene-distance.firebasestorage.app",
+  messagingSenderId: "102401152868",
+  appId: "1:102401152868:web:4fe96ce561a3258d9c8c71",
+  measurementId: "G-6MEZNW0PMX"
+};
+// Initialize
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const runsRef = db.collection("runs");
+/* ---------------------------------------------------------- */
+
+/* ===== BLE + UI app ===== */
+const UUID_CSC_SERVICE = 0x1816;
+const UUID_CSC_MEAS    = 0x2A5B;
 const TEST_MS = 30_000;
 
-/* ===== State ===== */
 let circ_m = Number(localStorage.getItem("circ_m")) || 2.096;
 let riderName = localStorage.getItem("rider_name") || "";
 
 let device, server, service, charMeas, connected = false;
 let testRunning = false, testEndsAt = 0, rafId = null;
 
-let baseRevs = null;           // wheel revs at test start (uint32)
+let baseRevs = null;
 let distance_m = 0;
 
 let lastPacket = null;         // {revs, tTicks, wall}
-const samples = [];            // per-sample speed points for the chart [{t, kmh}]
+const samples = [];            // {t, kmh}
+const localRuns = [];          // local fallback for CSV export
 
-const runs = [];               // completed runs for summary table
-
-/* ===== UI refs ===== */
 const nameInput = document.getElementById("nameInput");
 const circInput = document.getElementById("circInput");
 const smoothSelect = document.getElementById("smoothSelect");
@@ -135,7 +155,7 @@ const logBody = document.querySelector("#logTable tbody");
 const dlRunBtn = document.getElementById("downloadRunBtn");
 const dlSummaryBtn = document.getElementById("downloadSummaryBtn");
 
-/* ===== Init UI ===== */
+// Init UI
 nameInput.value = riderName;
 circInput.value = circ_m.toFixed(3);
 status('Use Chrome/Edge on HTTPS (or http://localhost). iOS Safari is unsupported for Web Bluetooth.');
@@ -151,7 +171,7 @@ circInput.addEventListener('change', () => {
   localStorage.setItem("circ_m", circ_m);
 });
 
-/* ===== Chart ===== */
+// Chart
 const ctx = document.getElementById('spdChart').getContext('2d');
 const chart = new Chart(ctx, {
   type: 'line',
@@ -163,17 +183,12 @@ const chart = new Chart(ctx, {
       x: { title: { display: true, text: 'Time (s)' } },
       y: { title: { display: true, text: 'km/h' }, suggestedMin: 0 }
     },
-    plugins: {
-      legend: { display: false },
-      tooltip: { mode: 'index', intersect: false }
-    }
+    plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } }
   }
 });
-
 function addChartPoint(t, kmh) {
   const w = Number(smoothSelect.value);
   if (w > 1) {
-    // simple moving average using last (w-1) points + this one
     const arr = chart.data.datasets[0].data;
     const last = arr.slice(-(w-1));
     const avg = (last.reduce((s,v)=>s+v,0) + kmh) / (last.length + 1);
@@ -184,7 +199,7 @@ function addChartPoint(t, kmh) {
   chart.update('none');
 }
 
-/* ===== Buttons ===== */
+// Buttons
 connectBtn.addEventListener('click', ensureConnected);
 disconnectBtn.addEventListener('click', disconnectNow);
 startBtn.addEventListener('click', startTest);
@@ -192,21 +207,16 @@ stopBtn.addEventListener('click', () => stopTestEarly('Stopped by user'));
 dlRunBtn.addEventListener('click', downloadRunCsv);
 dlSummaryBtn.addEventListener('click', downloadSummaryCsv);
 
-/* ===== BLE lifecycle ===== */
+// BLE lifecycle
 async function ensureConnected() {
-  if (connected && charMeas && server?.connected) { 
-    status('Already connected.'); 
-    return; 
-  }
-  if (!('bluetooth' in navigator)) { 
-    status('❌ Web Bluetooth not supported in this browser.'); 
-    return; 
-  }
+  if (connected && charMeas && server?.connected) { status('Already connected.'); return; }
+  if (!('bluetooth' in navigator)) { status('❌ Web Bluetooth not supported in this browser.'); return; }
   try {
     status('Requesting device…');
+    // Broader discovery so chooser appears even if 0x1816 isn't in ADV
     device = await navigator.bluetooth.requestDevice({
-      acceptAllDevices: true,  // 🔑 allow all devices
-      optionalServices: [UUID_CSC_SERVICE]  // 🔑 so we can use CSC later
+      acceptAllDevices: true,
+      optionalServices: [UUID_CSC_SERVICE]
     });
     device.addEventListener('gattserverdisconnected', onDisconnected);
 
@@ -223,13 +233,11 @@ async function ensureConnected() {
     disconnectBtn.disabled = false;
     startBtn.disabled = false;
     status('✅ Connected. Ready to start.');
-    console.log("Picked device:", device.name);
   } catch (e) {
     status('❌ ' + e);
     console.error(e);
   }
 }
-
 async function disconnectNow() {
   try {
     if (charMeas) { charMeas.removeEventListener('characteristicvaluechanged', onCsc); try{ await charMeas.stopNotifications(); }catch{} }
@@ -246,30 +254,27 @@ function onDisconnected() {
   if (testRunning) stopTestEarly('Sensor disconnected');
   status('Disconnected.');
 }
-
 function onCsc(evt) {
   if (!testRunning) return;
   const dv = evt.target.value;
   const flags = dv.getUint8(0);
-  if ((flags & 0x01) === 0) return; 
+  if ((flags & 0x01) === 0) return; // need wheel data
 
   const revs = dv.getUint32(1, true);
-  const tTicks = dv.getUint16(5, true); 
+  const tTicks = dv.getUint16(5, true); // 1/1024s ticks
   const now = Date.now();
 
   if (baseRevs === null) baseRevs = revs;
 
-  // distance from base
   const deltaRevs = (revs - baseRevs) >>> 0;
   distance_m = deltaRevs * circ_m;
 
   if (lastPacket) {
-    const dRevs = (revs - lastPacket.revs) >>> 0;
-    // handle 16-bit tick wrap
+    const dRevs  = (revs   - lastPacket.revs)   >>> 0;
     const dTicks = (tTicks - lastPacket.tTicks + 0x10000) & 0xFFFF;
     let kmh = 0;
     if (dRevs > 0 && dTicks > 0) {
-      const dt = dTicks / 1024; // seconds
+      const dt = dTicks / 1024;
       const mps = (dRevs * circ_m) / dt;
       kmh = mps * 3.6;
     } else {
@@ -286,10 +291,9 @@ function onCsc(evt) {
   lastPacket = { revs, tTicks, wall: now };
 }
 
-/* ===== Test control ===== */
+// Test control
 async function startTest() {
   if (!connected) { await ensureConnected(); if (!connected) return; }
-  // reset
   testRunning = true;
   baseRevs = null;
   distance_m = 0;
@@ -302,7 +306,6 @@ async function startTest() {
   finalDistEl.textContent = '–';
   avgSpeedEl.textContent = '–';
   maxSpeedEl.textContent = '–';
-  resultStats = null;
 
   startBtn.disabled = true;
   stopBtn.disabled = false;
@@ -324,13 +327,13 @@ function stopTestEarly(reason) {
   stopBtn.disabled = true;
   status(reason || 'Stopped.');
 }
-function finishTest() {
+async function finishTest() {
   if (!testRunning) return;
   testRunning = false;
   if (rafId) cancelAnimationFrame(rafId);
 
   const km = distance_m / 1000;
-  const avgKmh = km * 3600 / 30; 
+  const avgKmh = km * 3600 / 30;
   const maxKmh = samples.length ? Math.max(...samples.map(s => s.kmh)) : 0;
 
   finalDistEl.textContent = `${km.toFixed(3)} km`;
@@ -341,17 +344,41 @@ function finishTest() {
   startBtn.disabled = false;
   stopBtn.disabled = true;
 
-  // log summary row
-  const name = riderName || 'Rider';
-  const ts = new Date().toISOString().replace('T',' ').slice(0,19);
-  runs.push({ ts, name, km, avg: avgKmh, max: maxKmh });
-  const tr = document.createElement('tr');
-  tr.innerHTML = `<td>${runs.length}</td><td>${ts}</td><td>${escapeHtml(name)}</td>
-                  <td>${km.toFixed(3)}</td><td>${avgKmh.toFixed(1)}</td><td>${maxKmh.toFixed(1)}</td>`;
-  logBody.appendChild(tr);
+  // Save to Firestore (shared leaderboard)
+  const name = (riderName || 'Rider').slice(0, 64);
+  const tsLocal = new Date().toISOString().replace('T',' ').slice(0,19);
+  try {
+    await runsRef.add({
+      ts: tsLocal,      // human-readable
+      name,
+      km: Number(km),
+      avg: Number(avgKmh),
+      max: Number(maxKmh),
+      // extra numeric key for sorting by recency if needed:
+      t: Date.now()
+    });
+  } catch (e) {
+    console.error('Failed to save run:', e);
+    status('⚠️ Saved locally only (offline).');
+  }
+  // local fallback for CSV if offline
+  localRuns.push({ ts: tsLocal, name, km, avg: avgKmh, max: maxKmh });
 }
 
-//csv
+// Live leaderboard (realtime updates)
+runsRef.orderBy("km", "desc").orderBy("t", "asc").onSnapshot(snapshot => {
+  logBody.innerHTML = "";
+  let i = 1;
+  snapshot.forEach(doc => {
+    const r = doc.data();
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${i++}</td><td>${escapeHtml(r.ts || '')}</td><td>${escapeHtml(r.name || '')}</td>
+                    <td>${Number(r.km||0).toFixed(3)}</td><td>${Number(r.avg||0).toFixed(1)}</td><td>${Number(r.max||0).toFixed(1)}</td>`;
+    logBody.appendChild(tr);
+  });
+});
+
+// CSV exports
 function downloadRunCsv() {
   if (!samples.length) return;
   const header = 't_seconds,kmh\n';
@@ -359,9 +386,25 @@ function downloadRunCsv() {
   saveBlob(header + body, 'run_speed_series.csv', 'text/csv');
 }
 function downloadSummaryCsv() {
-  if (!runs.length) return;
+  if (!logBody.children.length && !localRuns.length) return;
+  const rows = [];
+  if (logBody.children.length) {
+    Array.from(logBody.children).forEach((tr, idx) => {
+      const tds = tr.querySelectorAll('td');
+      rows.push({
+        idx: idx+1,
+        ts: tds[1].textContent,
+        name: tds[2].textContent,
+        km: tds[3].textContent,
+        avg: tds[4].textContent,
+        max: tds[5].textContent
+      });
+    });
+  } else {
+    localRuns.forEach((r, i) => rows.push({ idx: i+1, ts: r.ts, name: r.name, km: r.km.toFixed(3), avg: r.avg.toFixed(1), max: r.max.toFixed(1) }));
+  }
   const header = 'index,timestamp,name,distance_km,avg_kmh,max_kmh\n';
-  const body = runs.map((r,i)=>`${i+1},${r.ts},${csvSafe(r.name)},${r.km.toFixed(3)},${r.avg.toFixed(1)},${r.max.toFixed(1)}`).join('\n');
+  const body = rows.map(r => `${r.idx},${r.ts},${csvSafe(r.name)},${r.km},${r.avg},${r.max}`).join('\n');
   saveBlob(header + body, 'runs_summary.csv', 'text/csv');
 }
 function saveBlob(text, filename, type) {
@@ -371,27 +414,10 @@ function saveBlob(text, filename, type) {
   a.click(); URL.revokeObjectURL(url);
 }
 
-//???
-function status(msg) { 
-  statusEl.textContent = msg; 
-}
-
-function escapeHtml(s) { 
-  return String(s).replace(/[&<>"']/g, m => (
-    {
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#39;'
-    }[m]
-  ));  
-}
-
-function csvSafe(s) { 
-  return `"${String(s).replace(/"/g,'""')}"`; 
-}
-
+// Utils
+function status(msg){ statusEl.textContent = msg; }
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+function csvSafe(s){ return `"${String(s).replace(/"/g,'""')}"`; }
 </script>
 </body>
 </html>
